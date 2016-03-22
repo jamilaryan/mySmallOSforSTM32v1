@@ -19,34 +19,40 @@
 uint32_t stacks[MAX_TASKS][TASK_STACK_SIZE];
 __attribute__((naked)) static void TaskShell(void);
 
-// 
-typedef struct Task_s {
-void (*f)(void *data);
-  /* Task function */void *data;
-  /* Private data pointerfor this task */
-uint32_t *stack;        
-  /* Pointer to top oftask's stack */
-PCB_t pcb;  /* Process control block */
-} Task_t;
-
-typedef struct PCB_s {/* Storage for r4-r14 */
-uint32_t r4;
-uint32_t r5;
-uint32_t r6;
-uint32_t r7;
-uint32_t r8;
-uint32_t r9;
-uint32_t sl;
-uint32_t fp;
-uint32_t ip;
-uint32_t lr;
-uint32_t sp;  /* Note location...*/
+/*Process Control Block to for saving/restoring contexts */
+typedef struct PCB_s {
+  /* Storage for r4-r14 */
+  uint32_t r4;
+  uint32_t r5;
+  uint32_t r6;
+  uint32_t r7;
+  uint32_t r8;
+  uint32_t r9;
+  uint32_t sl;
+  uint32_t fp;
+  uint32_t ip;
+  uint32_t lr;
+  uint32_t sp;  /* Note location...*/
 } PCB_t;
+
+
+/*  struct for pointing to Task's functions */
+typedef struct Task_s {
+  void (*f)(void *data);
+  /* Task function */
+  void *data;
+  /* Private data pointerfor this task */
+  uint32_t *stack;        
+  /* Pointer to top oftask's stack */
+  PCB_t pcb;  
+ /* Process control block */
+} Task_t;
 
 /* Process list */
 Task_t  tasks[MAX_TASKS];
 int32_t currentTask; 
 
+/* initializes the task's struct */
 void TaskInit()
 {
   for(int i=0;i<MAX_TASKS; i++)
@@ -57,25 +63,26 @@ void TaskInit()
   printf("task is initialized\n");
 }
 
-
+/* adds Task function from function list*/
 int32_t TaskAdd(void (*f)(void *data), void *data)
 {
 
   /* Fill in initial PCB */
-memset(&(tasks[i].pcb),0,sizeof(tasks[i].pcb));
-tasks[i].pcb.sp=(uint32_t)(&(stacks[i][TASK_STACK_SIZE-4]));
-tasks[i].pcb.fp=(uint32_t)(&(stacks[i][TASK_STACK_SIZE-4]));
-tasks[i].pcb.lr =(uint32_t)TaskShell;
-/* Put an initial stack frame on too */
-stacks[i][TASK_STACK_SIZE-1]=(uint32_t)(TaskShell);
-  /* Try to find an empty slot */
   int i;
   for(i=0; i<MAX_TASKS; i++) 
   {
+     memset(&(tasks[i].pcb),0,sizeof(tasks[i].pcb));
+     tasks[i].pcb.sp=(uint32_t)(&(stacks[i][TASK_STACK_SIZE-4]));
+     tasks[i].pcb.fp=(uint32_t)(&(stacks[i][TASK_STACK_SIZE-4]));
+     tasks[i].pcb.lr =(uint32_t)TaskShell;
+  /* Put an initial stack frame on too */
+     stacks[i][TASK_STACK_SIZE-1]=(uint32_t)(TaskShell);
+  /* Try to find an empty slot */
      if(tasks[i].f == NULL)
      {
         tasks[i].f    = f;
         tasks[i].data = data;
+        tasks[i].stack = stacks[i];
         return i;
      }
    }
@@ -83,7 +90,7 @@ stacks[i][TASK_STACK_SIZE-1]=(uint32_t)(TaskShell);
     return -1;
 }
 
-
+/* kills a particular function based on id */
 int32_t TaskKill(int32_t id)
 {
    if(tasks[id].f==NULL)
@@ -127,11 +134,11 @@ i = currentTask;
                          */
 }
 
-
+/* the main scheduler function that implements context switching */
 int32_t TaskSwitcher(void)
 {
 
-int32_t nextTask;
+      int32_t nextTask;
       register uint32_t *currentPCB asm("r0");
       register uint32_t *nextPCB asm("r1");
       //printf("Task switcher called\n\n");
@@ -165,6 +172,7 @@ int32_t nextTask;
                         return 1;*/
 }
 
+/* stub function that does not allow stack access by compiler */
 __attribute__((naked)) static void TaskShell(void) 
     {
     /* call the appropriate Task Function */
